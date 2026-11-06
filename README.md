@@ -12,10 +12,13 @@ See [docs/design.md](docs/design.md) for the trust boundaries.
 | Data model, `rpt` views, RLS, least-privilege DB users | Done |
 | Deterministic seed (300 customers, about 16k invoices, injection probes) | Done |
 | Tool catalog: 8 tools (YAML + SQL) | Done |
-| Query Gateway: auth, RBAC, validation, scope, masking, caps, audit | Done, 93 tests |
-| Agent host (Microsoft Agent Framework + local Ollama model) | Next |
-| Eval suite (30+ golden, ambiguity, out-of-scope, permission, adversarial) | Next |
-| 5-minute demo script | With the agent |
+| Query Gateway: auth, RBAC, validation, scope, masking, caps, audit | Done |
+| Users / roles / permissions tables (temporal) | Done |
+| Agent (Microsoft Agent Framework + local Ollama `qwen2.5:7b`) | Done |
+| Web UI (Blazor Server, Arabic/English, RTL, light/dark, mobile) | Done |
+| Tests | 123 (98 gateway + 25 agent/UI safety) |
+| Eval suite: 52 cases + runner + report | Done ([evals/REPORT.md](evals/REPORT.md)) |
+| 5-minute demo script | Done ([docs/demo-script.md](docs/demo-script.md)) |
 
 ## Prerequisites
 
@@ -32,6 +35,43 @@ See [docs/design.md](docs/design.md) for the trust boundaries.
 dotnet test                       # unit + integration tests (DB tests skip if SQL Server is unavailable)
 dotnet run --project src/AskOurData.Gateway --launch-profile http
 ```
+
+## Run the app
+
+```powershell
+ollama pull qwen2.5:7b                                              # once
+$env:OLLAMA_KEEP_ALIVE = "2h"                                       # optional: keep the model loaded between questions
+dotnet run --project src/AskOurData.Gateway --launch-profile http   # http://localhost:5247 (DB access)
+dotnet run --project src/AskOurData.Web --launch-profile http       # http://localhost:5257 (UI + agent, no DB access)
+```
+
+Open http://localhost:5257, pick a demo user, and ask. **العربية** in the header switches to Arabic (right-to-left).
+
+> **Speed:** on a CPU-only laptop, `qwen2.5:7b` takes about 20 to 90 seconds per answer, and about 2 minutes for
+> the first one while the model loads (the web app pre-loads it at startup). A GPU, or a hosted model behind the
+> same `IChatClient`, brings this down to a few seconds. Nothing else changes.
+
+`POST http://localhost:5257/dev/ask` with `{"user":"fiona","question":"...","lang":"en"}` runs the agent without
+the UI (Development only). The eval runner will use it.
+
+## Evals
+
+52 cases in [evals/cases.yaml](evals/cases.yaml), grouped as golden, ambiguity, out of scope, permission and
+adversarial. Each one runs through the real agent.
+
+- Golden answers are compared row for row with a direct gateway call.
+- Denials are confirmed in the gateway audit log.
+- Safety rules are checked on every case: no full IBAN, no rows outside the user's regions, no result over
+  100 rows, no period outside policy.
+
+```powershell
+# gateway + web app running (see above)
+dotnet run --project evals/AskOurData.Evals                       # full suite -> evals/REPORT.md
+dotnet run --project evals/AskOurData.Evals -- --category permission
+dotnet run --project evals/AskOurData.Evals -- --only G01,X06
+```
+
+The latest results are in [evals/REPORT.md](evals/REPORT.md). The demo script is [docs/demo-script.md](docs/demo-script.md).
 
 ## Try the gateway
 
@@ -92,6 +132,7 @@ db/                 schema, RLS, permissions
 src/AskOurData.Contracts   result envelope, fiscal calendar
 src/AskOurData.Gateway     the only component with DB access
 src/AskOurData.Seed        deterministic fake data
+src/AskOurData.Web         Blazor UI + agent (Agent Framework, Ollama); talks only to the gateway
 tests/                     unit + integration tests
 ```
 

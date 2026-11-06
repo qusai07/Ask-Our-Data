@@ -1,0 +1,57 @@
+<aside class="panel @(Open ? "open" : null)" aria-label="@Ui["reports.title"]">
+    <div class="panel-head">
+        <div>
+            <h2>@Ui["reports.title"]</h2>
+            <p class="muted small">@Ui["reports.subtitle"]</p>
+        </div>
+        <button type="button" class="icon-btn panel-close" aria-label="@Ui["nav.closereports"]" @onclick="OnClose">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+        </button>
+    </div>
+
+    @if (Me is not null)
+    {
+        <div class="me-card">
+            <div class="avatar" aria-hidden="true">@Initial</div>
+            <div>
+                <div class="me-name">@Me.DisplayName</div>
+                <div class="me-roles">
+                    @foreach (var r in Me.Roles)
+                    {
+                        <span class="badge">@Ui.Role(r)</span>
+                    }
+                </div>
+                <div class="muted small">@Ui["reports.regions"]: @string.Join(" · ", Me.Regions)</div>
+            </div>
+        </div>
+    }
+
+    <ul class="report-list">
+        @foreach (var e in Catalog.Where(c => c.Name != "list_available_reports").OrderBy(c => Ui.Order(c.Name)))
+        {
+            <li>
+                <div class="report-name">@Ui.Report(e.Name)</div>
+                @foreach (var ex in Ui.Examples(e.Name))
+                {
+                    <button type="button" class="example" disabled="@Busy" @onclick="() => OnAsk.InvokeAsync(ex)">@ex</button>
+                }
+            </li>
+        }
+    </ul>
+</aside>
+@if (Open)
+{
+    <div class="scrim" @onclick="OnClose" aria-hidden="true"></div>
+}
+
+@code {
+    [CascadingParameter] private Ui Ui { get; set; } = default!;
+    [Parameter] public MeResponse? Me { get; set; }
+    [Parameter] public IReadOnlyList<CatalogEntry> Catalog { get; set; } = [];
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<string> OnAsk { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string Initial => string.IsNullOrEmpty(Me?.DisplayName) ? "?" : Me!.DisplayName[..1].ToUpperInvariant();
+}

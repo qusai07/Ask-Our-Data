@@ -1,7 +1,270 @@
 ﻿@page "/"
+@attribute [Authorize]
+@implements IAsyncDisposable
+@inject ChatSession Session
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 
-<PageTitle>Home</PageTitle>
+<PageTitle>@Ui["app.name"]</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="app">
+    <header class="topbar">
+        <div class="brand">
+            <button type="button" class="icon-btn menu-btn" aria-label="@Ui["nav.reports"]" @onclick="() => panelOpen = true">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+            </button>
+            <span class="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 17v-6M12 17V7M18 17v-4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none" /></svg>
+            </span>
+            <span class="brand-name">@Ui["app.name"]</span>
+            <span class="brand-tag">@Ui["app.tagline"]</span>
+        </div>
+        <nav class="top-actions">
+            <button type="button" class="btn btn-ghost btn-sm" disabled="@busy" @onclick="NewConversation">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+                <span class="hide-sm">@Ui["nav.newchat"]</span>
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" lang="@(Ui.Rtl ? "en" : "ar")" aria-label="@Ui["nav.language.aria"]" @onclick="SwitchLanguage">
+                @Ui["nav.language"]
+            </button>
+            <form method="post" action="/auth/logout" class="inline-form">
+                <AntiforgeryToken />
+                <button type="submit" class="btn btn-ghost btn-sm" title="@Ui["nav.signout"]">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 17l5-5-5-5M20 12H9M12 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                    <span class="hide-sm">@Ui["nav.signout"]</span>
+                </button>
+            </form>
+        </nav>
+    </header>
 
-Welcome to your new app.
+    <div class="body @(Session.Status == SessionStatus.Ready ? null : "no-panel")">
+        @if (Session.Status == SessionStatus.Ready)
+        {
+            <ReportsPanel Me="Session.Me" Catalog="Session.Catalog" Open="panelOpen" Busy="busy"
+                          OnAsk="AskFromPanel" OnClose="() => panelOpen = false" />
+        }
+
+        <main class="chat" id="chat">
+            @switch (Session.Status)
+            {
+                case SessionStatus.Loading:
+                    <div class="center"><span class="spinner" aria-label="Loading"></span></div>
+                    break;
+                case SessionStatus.Disabled:
+                    <div class="center"><div class="notice notice-danger">@Ui["home.disabled"]</div></div>
+                    break;
+                case SessionStatus.GatewayUnavailable:
+                    <div class="center"><div class="notice notice-warn">@Ui["home.gatewaydown"]</div></div>
+                    break;
+                case SessionStatus.SignedOut:
+                    <RedirectToLogin />
+                    break;
+                default:
+                    <div class="thread" aria-live="polite">
+                        @if (messages.Count == 0)
+                        {
+                            <section class="welcome">
+                                <h1>@Ui.F("home.greeting", FirstName)</h1>
+                                <p class="muted">@Ui["home.intro"]</p>
+                                <p class="eyebrow">@Ui["home.try"]</p>
+                                <div class="suggestions">
+                                    @foreach (var s in Suggestions)
+                                    {
+                                        <button type="button" class="suggestion" @onclick="() => SendAsync(s)">
+                                            <span>@s</span>
+                                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="flip-rtl"><path d="M5 12h14m-5-5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                                        </button>
+                                    }
+                                </div>
+                            </section>
+                        }
+
+                        @foreach (var m in messages)
+                        {
+                            <div class="msg-user"><p dir="auto">@m.Question</p></div>
+                            @if (m.Answer is { } a)
+                            {
+                                <AnswerCard Answer="a" Busy="busy" OnOption="SendAsync" OnRetry="() => SendAsync(m.Question)" OnShowReports="() => panelOpen = true" />
+                            }
+                            else if (m.Cancelled)
+                            {
+                                <p class="muted small cancelled">@(Ui.Rtl ? "تم الإيقاف." : "Stopped.")</p>
+                            }
+                            else if (m.Failed)
+                            {
+                                <AnswerCard Answer="ErrorAnswer" Busy="busy" OnRetry="() => SendAsync(m.Question)" OnShowReports="() => panelOpen = true" />
+                            }
+                            else
+                            {
+                                <div class="progress" role="status">
+                                    <span class="spinner" aria-hidden="true"></span>
+                                    <span>@ProgressText(m)</span>
+                                    <span class="muted small"><bdi>@Ui.F("answer.time", (DateTime.UtcNow - m.StartedUtc).TotalSeconds)</bdi></span>
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    <form class="composer" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+                        <label for="q" class="sr-only">@Ui["composer.placeholder"]</label>
+                        <textarea id="q" rows="1" maxlength="1000" placeholder="@Ui["composer.placeholder"]" dir="auto"
+                                  @bind="input" @bind:event="oninput" disabled="@busy"></textarea>
+                        @if (busy)
+                        {
+                            <button type="button" class="btn btn-secondary" @onclick="Stop">
+                                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></svg>
+                                @Ui["composer.stop"]
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="submit" class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(input)" aria-label="@Ui["composer.send"]">
+                                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="flip-rtl"><path d="M4 12h15m-6-7l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                                <span class="hide-sm">@Ui["composer.send"]</span>
+                            </button>
+                        }
+                    </form>
+                    <p class="composer-hint muted small">@Ui["composer.hint"]</p>
+                    break;
+            }
+        </main>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Ui Ui { get; set; } = default!;
+
+    private sealed class Message
+    {
+        public required string Question { get; init; }
+        public DateTime StartedUtc { get; } = DateTime.UtcNow;
+        public AgentAnswer? Answer { get; set; }
+        public AgentProgress Progress { get; set; } = new(ProgressStage.Thinking);
+        public bool Cancelled { get; set; }
+        public bool Failed { get; set; }
+    }
+
+    private readonly List<Message> messages = [];
+    private string input = "";
+    private bool busy;
+    private bool panelOpen;
+    private volatile bool disposed;
+    private CancellationTokenSource? cts;
+    private Timer? ticker;
+    private DotNetObjectReference<Home>? selfRef;
+
+    private static readonly AgentAnswer ErrorAnswer = new(AnswerKind.Error, null, false, null, [], [], [], null, 0);
+
+    private string FirstName => (Session.Me?.DisplayName ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+
+    private IEnumerable<string> Suggestions =>
+        Session.Catalog.Where(c => c.Name is not ("list_available_reports" or "find_customer"))
+            .OrderBy(c => Ui.Order(c.Name))
+            .SelectMany(c => Ui.Examples(c.Name).Take(1)).Take(4);
+
+    protected override async Task OnInitializedAsync() => await Session.InitializeAsync(CancellationToken.None);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (disposed || Session.Status != SessionStatus.Ready) return;
+        selfRef ??= DotNetObjectReference.Create(this);
+        await JS.TryInvokeVoidAsync("aod.initComposer", "q", selfRef);
+        if (busy || messages.Count > 0) await JS.TryInvokeVoidAsync("aod.scrollToEnd", "chat");
+    }
+
+    /// <summary>Called from JS on Enter (without Shift).</summary>
+    [JSInvokable]
+    public Task SubmitFromKeyboard(string text)
+    {
+        input = text;
+        return SubmitAsync();
+    }
+
+    private Task SubmitAsync() => SendAsync(input);
+
+    private Task AskFromPanel(string q)
+    {
+        panelOpen = false;
+        return SendAsync(q);
+    }
+
+    private async Task SendAsync(string question)
+    {
+        question = (question ?? "").Trim();
+        if (busy || question.Length == 0) return;
+        if (question.Length > 1000) question = question[..1000];
+
+        input = "";
+        busy = true;
+        var m = new Message { Question = question };
+        messages.Add(m);
+        cts = new CancellationTokenSource();
+        ticker = new Timer(_ => Refresh(), null, 1000, 1000);
+        StateHasChanged();
+
+        var progress = new Progress<AgentProgress>(p => { m.Progress = p; Refresh(); });
+        try
+        {
+            m.Answer = await Session.AskAsync(question, Ui.Lang, progress, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            m.Cancelled = true;
+        }
+        catch (Exception)
+        {
+            m.Failed = true;
+        }
+        finally
+        {
+            busy = false;
+            ticker?.Dispose();
+            ticker = null;
+            cts?.Dispose();
+            cts = null;
+            if (!disposed)
+            {
+                StateHasChanged();
+                await JS.TryInvokeVoidAsync("aod.focus", "q");
+            }
+        }
+    }
+
+    /// <summary>Re-render from a timer/progress callback, unless the page is already gone.</summary>
+    private void Refresh()
+    {
+        if (disposed) return;
+        _ = InvokeAsync(() =>
+        {
+            if (!disposed) StateHasChanged();
+        });
+    }
+
+    private void Stop() => cts?.Cancel();
+
+    private void NewConversation()
+    {
+        if (busy) return;
+        messages.Clear();
+        Session.Reset();
+    }
+
+    private void SwitchLanguage() =>
+        Nav.NavigateTo($"/culture/{(Ui.Rtl ? "en" : "ar")}?returnUrl=/", forceLoad: true);
+
+    private string ProgressText(Message m) => m.Progress.Stage switch
+    {
+        ProgressStage.CallingTool => Ui.F("progress.tool", Ui.Report(m.Progress.Tool ?? "")),
+        ProgressStage.Checking => Ui["progress.checking"],
+        _ => Ui["progress.thinking"],
+    };
+
+    public ValueTask DisposeAsync()
+    {
+        disposed = true;
+        try { cts?.Cancel(); } catch (ObjectDisposedException) { }   // stops the running agent call
+        ticker?.Dispose();
+        selfRef?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

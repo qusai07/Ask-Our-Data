@@ -24,6 +24,15 @@ public sealed partial class Ui(string lang)
     public IReadOnlyList<string> Examples(string tool) =>
         (Rtl ? ExamplesAr : ExamplesEn).TryGetValue(tool, out var v) ? v : [];
 
+    /// <summary>Display order for reports (most asked first); unknown reports go last.</summary>
+    public static int Order(string tool) => Array.IndexOf(DisplayOrder, tool) is var i and >= 0 ? i : 99;
+
+    private static readonly string[] DisplayOrder =
+    [
+        "get_top_customers_by_late_payments", "get_ar_aging_summary", "get_overdue_invoices", "get_revenue_by_customer",
+        "get_collections_summary", "get_customer_profile", "find_customer", "list_available_reports",
+    ];
+
     /// <summary>"FY27 Q3 (to date)" → "الربع 3 من السنة المالية 27 (حتى تاريخه)"; month names translated.</summary>
     public string PeriodLabel(string label)
     {
@@ -87,7 +96,7 @@ public sealed partial class Ui(string lang)
         ["answer.scope"] = "Regions",
         ["answer.freshness"] = "Data as of",
         ["answer.rows"] = "{0} rows",
-        ["answer.truncated"] = "Showing the first {0} rows. Ask for a smaller set or a higher limit (max 100).",
+        ["answer.truncated"] = "Showing the top {0}; more rows match. Ask for a higher limit (up to 100) to see more.",
         ["answer.total"] = "Total",
         ["answer.definitions"] = "Definitions used",
         ["answer.trace"] = "How this answer was produced",
@@ -190,7 +199,7 @@ public sealed partial class Ui(string lang)
         ["answer.scope"] = "المناطق",
         ["answer.freshness"] = "البيانات حتى",
         ["answer.rows"] = "{0} صفوف",
-        ["answer.truncated"] = "يتم عرض أول {0} صفوف. اطلب مجموعة أصغر أو حدًا أعلى (الحد الأقصى 100).",
+        ["answer.truncated"] = "يتم عرض أعلى {0} فقط وهناك صفوف أخرى مطابقة. اطلب حدًا أعلى (حتى 100) لعرض المزيد.",
         ["answer.total"] = "الإجمالي",
         ["answer.definitions"] = "التعريفات المستخدمة",
         ["answer.trace"] = "كيف تم إعداد هذه الإجابة",

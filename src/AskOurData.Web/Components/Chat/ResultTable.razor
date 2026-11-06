@@ -1,0 +1,122 @@
+@inject IJSRuntime JS
+
+<section class="result" aria-label="@Ui.Report(Result.Report)">
+    <div class="result-head">
+        <div class="result-title">
+            <h3>@Ui.Report(Result.Report)</h3>
+            <span class="muted">@Ui.F("answer.rows", Result.RowCount)</span>
+        </div>
+        @if (Result.RowCount > 0)
+        {
+            <div class="result-actions">
+                <button type="button" class="btn btn-ghost btn-sm" @onclick="CopyAsync">
+                    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="1.8" /></svg>
+                    <span>@(copied ? Ui["answer.copied"] : Ui["answer.copy"])</span>
+                </button>
+                <button type="button" class="btn btn-ghost btn-sm" @onclick="DownloadAsync">
+                    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                    <span>@Ui["answer.csv"]</span>
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (Result.RowCount == 0)
+    {
+        <p class="empty">@Ui["answer.empty"]</p>
+    }
+    else
+    {
+        <div class="table-wrap" tabindex="0" role="region" aria-label="@Ui.Report(Result.Report)">
+            <table class="data">
+                <thead>
+                    <tr>
+                        @foreach (var c in Result.Columns)
+                        {
+                            <th scope="col" class="@(TableFormat.IsNumeric(c) ? "num" : null)"
+                                title="@(c.Masked ? Ui["answer.masked"] : c.Untrusted ? Ui["answer.untrusted"] : null)">
+                                @Ui.Column(c.Name)
+                                @if (c.Masked)
+                                {
+                                    <svg class="lock" viewBox="0 0 24 24" width="12" height="12" aria-label="@Ui["answer.masked"]"><rect x="5" y="11" width="14" height="9" rx="2" fill="currentColor" /><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" /></svg>
+                                }
+                                @if (c.Unit is not null)
+                                {
+                                    <span class="unit">@c.Unit</span>
+                                }
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Result.Rows)
+                    {
+                        <tr>
+                            @foreach (var c in Result.Columns)
+                            {
+                                var text = TableFormat.Format(row.GetValueOrDefault(c.Name), c);
+                                if (TableFormat.IsNumeric(c))
+                                {
+                                    <td class="num"><bdi>@(text.Length == 0 ? "—" : text)</bdi></td>
+                                }
+                                else if (text.Length == 0)
+                                {
+                                    <td class="nil" title="@(c.Masked ? Ui["answer.masked"] : null)">—</td>
+                                }
+                                else
+                                {
+                                    <td class="@(c.Name == "notes" ? "clamp" : null)" title="@(c.Name == "notes" ? text : null)"><bdi>@text</bdi></td>
+                                }
+                            }
+                        </tr>
+                    }
+                </tbody>
+                @if (Result.Totals is { Count: > 0 } totals)
+                {
+                    <tfoot>
+                        <tr>
+                            @for (var i = 0; i < Result.Columns.Count; i++)
+                            {
+                                var c = Result.Columns[i];
+                                if (totals.TryGetValue(c.Name, out var t))
+                                {
+                                    <td class="num"><bdi>@TableFormat.FormatTotal(t, c)</bdi></td>
+                                }
+                                else
+                                {
+                                    <td>@(i == 0 ? Ui["answer.total"] : "")</td>
+                                }
+                            }
+                        </tr>
+                    </tfoot>
+                }
+            </table>
+        </div>
+        @if (Result.Truncated)
+        {
+            <p class="muted small more-rows">@Ui.F("answer.truncated", Result.RowCount)</p>
+        }
+    }
+</section>
+
+@code {
+    [CascadingParameter] private Ui Ui { get; set; } = default!;
+    [Parameter, EditorRequired] public ToolResult Result { get; set; } = default!;
+
+    private bool copied;
+
+    private async Task CopyAsync()
+    {
+        await JS.TryInvokeVoidAsync("aod.copyText", TableFormat.ToTsv(Result, Ui));
+        copied = true;
+        StateHasChanged();
+        await Task.Delay(1800);
+        copied = false;
+    }
+
+    private async Task DownloadAsync()
+    {
+        var name = $"{Result.Report}_{Result.Period?.From:yyyyMMdd}-{Result.Period?.To:yyyyMMdd}.csv".Replace("_-", "_");
+        await JS.TryInvokeVoidAsync("aod.downloadText", name, TableFormat.ToCsv(Result, Ui), "text/csv;charset=utf-8");
+    }
+}

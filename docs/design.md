@@ -53,6 +53,21 @@ and data scope itself, and runs a fixed parameterized query.
 | TB4 | Even buggy SQL can't read `core.*`, write anything, or see another region. | DB grants + DENY, RLS policy, startup self-check |
 | TB5 | Data can't become instructions. | Untrusted columns flagged, system prompt, no write/send/export tools |
 
+## Agent host safeguards (`AskOurData.Web`)
+
+The agent host sits on the untrusted side of TB3. It has no database credentials, and every rule below
+is a usability or correctness aid. None of them is a security control the gateway relies on.
+
+| Safeguard | What it does |
+|---|---|
+| Tools come from the gateway | The model's tools are built from `GET /catalog`, so it only sees tools for the user's role. Reports the user may not run are offered as stubs; calling one makes a real gateway call that returns **403 and is audited**, so "not available for your role" is decided by the server. |
+| Customer by name | Reports that take `customer_id` also accept `customer_name`. The host resolves it through the gateway's `find_customer`, using the same token and scope. One match is used; several produce a clarifying question with the names; none produces "not found". An id the model invents (one not seen in a result or typed by the user) is refused before reaching the gateway. |
+| Untrusted data | The model sees results inside `<tool_result>` tags, JSON-encoded so that `<`, `>` and quotes are escaped. Planted text such as `</tool_result> SYSTEM: …` can't close the wrapper. Untrusted columns are listed by name. |
+| Table rendered by the host | The table, totals, period, scope, freshness and definitions shown to the user come straight from the gateway result, never from model text. |
+| Grounding check | Every number in the explanation must appear in a tool result or in the question. Rounding and K/M abbreviations are accepted; sums and percentages the model works out itself are not. If a number fails, the host does one rewrite pass with no tools; if it still fails, the explanation is withheld and only the table is shown. |
+| No write tools | The only side effect is the missing-report log, which the host writes through the gateway, never the model. CSV and copy happen in the browser from the gateway result, with formula injection neutralized. |
+| Limits | At most 6 tool calls per question, the last 4 turns of history (questions and parameters only, not data), temperature 0, and a Stop button. |
+
 ## Authorization model (OpsDb `sec` schema)
 
 ```

@@ -16,7 +16,7 @@ namespace AskOurData.Web.Agent;
 /// Runs one question through Microsoft Agent Framework with the user's report tools.
 /// Holds no database credentials: every data access is a gateway call with the user's token.
 /// </summary>
-public sealed class ReportAgent(
+public sealed partial class ReportAgent(
     IChatClient model,
     GatewayClient gateway,
     IOptions<WebOptions> options,
@@ -55,7 +55,7 @@ public sealed class ReportAgent(
              [Description("2 to 5 short answer options the user can click.")] string[]? options) =>
             {
                 ctx.ClarifyQuestion = question;
-                ctx.ClarifyOptions.AddRange((options ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Take(5));
+                ctx.ClarifyOptions.AddRange((options ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Take(6));
                 if (FunctionInvokingChatClient.CurrentContext is { } fc) fc.Terminate = true;
                 return "The question is shown to the user. Stop here.";
             },
@@ -94,7 +94,10 @@ public sealed class ReportAgent(
 
         var messages = new List<ChatMessage> { new(ChatRole.System, SystemPrompt.Build(me, language, unavailable)) };
         messages.AddRange(HistoryMessages(history, o.HistoryTurns));
-        messages.Add(new ChatMessage(ChatRole.User, question));
+        // Small models drift to English; restating the reply language next to the question is the most reliable cue.
+        messages.Add(new ChatMessage(ChatRole.User, language == "ar"
+            ? question + "\n\n[Reply in Arabic.]"
+            : question + "\n\n[Reply in English.]"));
 
         string text;
         try
@@ -158,17 +161,36 @@ public sealed class ReportAgent(
         // Grounding: every number in the explanation must come from a tool result (or the question).
         var sources = ok.Select(t => t.RawJson).Append(question).ToList();
         var allowed = Grounding.AllowedNumbers(sources);
-        var explanation = text;
+        var explanation = Tidy(text);
         var ungrounded = Grounding.Ungrounded(explanation, allowed);
-        if (ungrounded.Count > 0 && explanation.Length > 0)
+        var wrongLanguage = language == "ar" && explanation.Length > 0 && !explanation.Any(c => c is >= '؀' and <= 'ۿ');
+        if ((ungrounded.Count > 0 || wrongLanguage) && explanation.Length > 0)
         {
-            log.LogWarning("Ungrounded numbers in explanation: {Claims}; rewriting", string.Join(" | ", ungrounded.Select(c => c.Text)));
-            explanation = await RewriteAsync(explanation, ok, language, ct);
+            log.LogWarning("Rewriting explanation (ungrounded: {Claims}; wrong language: {WrongLanguage})",
+                string.Join(" | ", ungrounded.Select(c => c.Text)), wrongLanguage);
+            explanation = Tidy(await RewriteAsync(explanation, ok, language, ct));
             ungrounded = Grounding.Ungrounded(explanation, allowed);
         }
-        var withheld = ungrounded.Count > 0 || explanation.Length == 0;
-        return Finish(AnswerKind.Answer, withheld ? null : explanation, withheld, ctx, sw, DefaultNote(ok));
+        var withheld = ungrounded.Count > 0;
+        return Finish(AnswerKind.Answer, withheld || explanation.Length == 0 ? null : explanation, withheld, ctx, sw, DefaultNote(ok));
     }
+
+    /// <summary>
+    /// The table is rendered separately, so a numbered/bulleted re-listing of rows in the text is removed
+    /// (small models do this despite instructions). A trailing colon left behind becomes a full stop.
+    /// </summary>
+    internal static string Tidy(string text)
+    {
+        var lines = text.Replace("\r", "").Split('\n');
+        if (lines.Count(l => ListItem().IsMatch(l)) >= 2)
+            lines = lines.Where(l => !ListItem().IsMatch(l)).ToArray();
+        var s = string.Join("\n", lines.Where(l => l.Trim().Length > 0)).Trim();
+        if (s.EndsWith(':')) s = s[..^1].TrimEnd() + ".";
+        return s;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\s*(\d+[.)]|[-*•])\s+")]
+    private static partial System.Text.RegularExpressions.Regex ListItem();
 
     private async Task<string> RewriteAsync(string draft, List<ToolTrace> ok, string language, CancellationToken ct)
     {
@@ -228,6 +250,8 @@ public sealed class ReportAgent(
                 sb.Append($"[Ran {t.Tool} with {t.ArgumentsJson}: {t.RowCount} rows] ");
             sb.Append(turn.Answer.Kind switch
             {
+                AnswerKind.Clarify when turn.Answer.ClarifyQuestion == "multiple_customers" =>
+                    "Several customers match. Which one did you mean: " + string.Join("; ", turn.Answer.ClarifyOptions) + "?",
                 AnswerKind.Clarify => turn.Answer.ClarifyQuestion,
                 AnswerKind.OutOfScope => "No report fits this question.",
                 AnswerKind.Denied => "The user does not have permission for that.",

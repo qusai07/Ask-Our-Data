@@ -1,0 +1,174 @@
+@switch (Answer.Kind)
+{
+    case AnswerKind.Answer:
+        var first = Answer.Results.FirstOrDefault();
+        <article class="answer">
+            @if (Answer.Text is { Length: > 0 } text)
+            {
+                <p class="answer-text" dir="auto">@text</p>
+            }
+            else if (Answer.ExplanationWithheld)
+            {
+                <p class="answer-text muted">@Ui["answer.withheld"]</p>
+            }
+
+            @if (Answer.DefaultNote is { } note)
+            {
+                <p class="default-note">
+                    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8" /><path d="M12 8h.01M11 12h1v4h1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+                    @Ui["answer.default." + note]
+                </p>
+            }
+
+            @if (first is not null && first.Report != "list_available_reports")
+            {
+                <div class="chips">
+                    @if (first.Period is { } p)
+                    {
+                        <span class="chip" title="@p.From.ToString("yyyy-MM-dd") – @p.To.ToString("yyyy-MM-dd") (@p.Timezone)">
+                            <span class="chip-k">@Ui["answer.period"]</span>
+                            <span class="chip-v">@Ui.PeriodLabel(p.Label)</span>
+                            <span class="chip-sub"><bdi>@p.From.ToString("yyyy-MM-dd")</bdi> → <bdi>@p.To.ToString("yyyy-MM-dd")</bdi></span>
+                        </span>
+                    }
+                    <span class="chip">
+                        <span class="chip-k">@Ui["answer.scope"]</span>
+                        <span class="chip-v">@string.Join(" · ", first.ScopeApplied.Regions)</span>
+                    </span>
+                    @if (first.DataFreshness is { } f)
+                    {
+                        <span class="chip">
+                            <span class="chip-k">@Ui["answer.freshness"]</span>
+                            <span class="chip-v"><bdi>@f.RefreshedAtUtc.ToString("yyyy-MM-dd HH:mm") UTC</bdi></span>
+                        </span>
+                    }
+                </div>
+            }
+
+            @foreach (var r in Answer.Results)
+            {
+                if (r.Report == "list_available_reports")
+                {
+                    <ul class="report-grid">
+                        @foreach (var row in r.Rows)
+                        {
+                            var name = row.GetValueOrDefault("name")?.ToString() ?? "";
+                            if (name == "list_available_reports") continue;
+                            <li>
+                                <strong>@Ui.Report(name)</strong>
+                                @foreach (var ex in Ui.Examples(name).Take(1))
+                                {
+                                    <button type="button" class="link" @onclick="() => OnOption.InvokeAsync(ex)">“@ex”</button>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <ResultTable Result="r" />
+                }
+            }
+
+            @if (first is not null && first.Definitions.Count > 0)
+            {
+                <details class="disclosure">
+                    <summary>@Ui["answer.definitions"]</summary>
+                    <ul>
+                        @for (var i = 0; i < first.Definitions.Count; i++)
+                        {
+                            var key = first.DefinitionKeys is { } k && i < k.Count ? k[i] : "";
+                            <li>@Ui.Definition(key, first.Definitions[i])</li>
+                        }
+                    </ul>
+                </details>
+            }
+            <Trace Answer="Answer" />
+        </article>
+        break;
+
+    case AnswerKind.Clarify:
+        <article class="answer answer-clarify">
+            <p class="kind-title">@Ui["kind.clarify"]</p>
+            <p class="answer-text" dir="auto">
+                @(Answer.ClarifyQuestion == "multiple_customers"
+                    ? (Ui.Rtl ? "يوجد أكثر من عميل مطابق. أيّهم تقصد؟" : "More than one customer matches. Which one did you mean?")
+                    : Answer.ClarifyQuestion)
+            </p>
+            @if (Answer.ClarifyOptions.Count > 0)
+            {
+                <div class="options">
+                    @foreach (var o in Answer.ClarifyOptions)
+                    {
+                        <button type="button" class="btn btn-option" disabled="@Busy" @onclick="() => OnOption.InvokeAsync(o)"><bdi>@o</bdi></button>
+                    }
+                </div>
+            }
+            <Trace Answer="Answer" />
+        </article>
+        break;
+
+    case AnswerKind.Info:
+        <article class="answer">
+            <p class="answer-text" dir="auto">@(Answer.Text ?? (Ui.Rtl ? "لم أتمكن من الإجابة على ذلك من التقارير المعتمدة." : "I couldn't answer that from the approved reports."))</p>
+            <button type="button" class="btn btn-ghost btn-sm" @onclick="OnShowReports">@Ui["kind.seereports"]</button>
+            <Trace Answer="Answer" />
+        </article>
+        break;
+
+    default:
+        var (cls, title, body) = Answer.Kind switch
+        {
+            AnswerKind.OutOfScope => ("state-info", Ui["kind.outofscope.title"], Ui["kind.outofscope.body"]),
+            AnswerKind.Denied => ("state-lock", Ui["kind.denied.title"], Ui["kind.denied.body"]),
+            AnswerKind.NotFound => ("state-info", Ui["kind.notfound.title"], Ui["kind.notfound.body"]),
+            _ => ("state-error", Ui["kind.error.title"], Ui["kind.error.body"]),
+        };
+        <article class="answer answer-state @cls" role="status">
+            <div class="state-icon" aria-hidden="true">
+                @if (Answer.Kind == AnswerKind.Denied)
+                {
+                    <svg viewBox="0 0 24 24" width="20" height="20"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" /><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8" /></svg>
+                }
+                else if (Answer.Kind == AnswerKind.Error)
+                {
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 8v5m0 3h.01M10.3 3.9L2.4 17.5A2 2 0 0 0 4.1 20.5h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8" /><path d="M12 8h.01M11 12h1v4h1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+                }
+            </div>
+            <div>
+                <p class="kind-title">@title</p>
+                <p class="answer-text">@body</p>
+                @if (Answer.Kind == AnswerKind.Denied && Answer.Trace.FirstOrDefault(t => t.ErrorCode == ErrorCodes.PermissionDenied)?.ErrorMessage is { } msg && msg.Contains("region"))
+                {
+                    <p class="muted small">@msg</p>
+                }
+                @if (Answer.Kind == AnswerKind.Error && Answer.Trace.LastOrDefault(t => t.ErrorCode == ErrorCodes.InvalidArgument)?.ErrorMessage is { } invalid)
+                {
+                    @* Server-authored validation message (never echoes input), e.g. "'limit' must be between 1 and 100." *@
+                    <p class="muted small"><span dir="ltr">@(Ui.Rtl ? "رفض الخادم الطلب: " : "The report service rejected the request: ")@invalid</span></p>
+                }
+                <div class="state-actions">
+                    @if (Answer.Kind == AnswerKind.Error)
+                    {
+                        <button type="button" class="btn btn-secondary btn-sm" disabled="@Busy" @onclick="OnRetry">@Ui["kind.retry"]</button>
+                    }
+                    <button type="button" class="btn btn-ghost btn-sm" @onclick="OnShowReports">@Ui["kind.seereports"]</button>
+                </div>
+            </div>
+            <Trace Answer="Answer" />
+        </article>
+        break;
+}
+
+@code {
+    [CascadingParameter] private Ui Ui { get; set; } = default!;
+    [Parameter, EditorRequired] public AgentAnswer Answer { get; set; } = default!;
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<string> OnOption { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
+    [Parameter] public EventCallback OnShowReports { get; set; }
+}

@@ -109,7 +109,7 @@ public sealed class GatewayToolFunction : AIFunction
     /// <summary>Returns a customer_id, or a model-facing message (and sets clarify/not-found state).</summary>
     private async Task<object?> ResolveCustomerAsync(string name, CancellationToken ct)
     {
-        var lookupArgs = new JsonObject { ["name_query"] = name.Length > 100 ? name[..100] : name, ["limit"] = 6 }.ToJsonString();
+        var lookupArgs = new JsonObject { ["name_query"] = name.Length > 100 ? name[..100] : name, ["limit"] = 10 }.ToJsonString();
         var lookup = await CallAsync("find_customer", lookupArgs, ct);
         if (!lookup.Ok || lookup.Result is null) return ModelView.Render("find_customer", lookup, _rowsToModel);
 
@@ -131,7 +131,7 @@ public sealed class GatewayToolFunction : AIFunction
 
         // Several matches: ask the user, deterministically.
         _ctx.ClarifyQuestion = "multiple_customers";
-        _ctx.ClarifyOptions.AddRange(matches.Take(5).Select(m => m.Name));
+        _ctx.ClarifyOptions.AddRange(matches.Take(10).Select(m => m.Name));
         _ctx.Terminate();
         return "Several customers match. The user is being asked to choose. Stop here.";
     }
@@ -169,9 +169,10 @@ public sealed class GatewayToolFunction : AIFunction
     }
 
     /// <summary>
-    /// Usability shim on the untrusted side of the boundary: drops nulls and converts "5" to 5 where the
-    /// schema says integer (small local models often quote numbers). It never adds, renames or widens
-    /// anything: unknown keys still reach the gateway and are rejected there.
+    /// Usability shim on the untrusted side of the boundary: drops nulls, drops parameters the report does
+    /// not have (small models invent e.g. "group_by" or "region" and then give up on the error), and converts
+    /// "5" to 5 where the schema says integer. The schema comes from the gateway, so this can only remove
+    /// things, never add, rename or widen them; the gateway still validates everything it receives.
     /// </summary>
     public static string ShapeArguments(IEnumerable<KeyValuePair<string, object?>> arguments, JsonObject schema)
     {
@@ -179,6 +180,7 @@ public sealed class GatewayToolFunction : AIFunction
         var result = new JsonObject();
         foreach (var (key, value) in arguments)
         {
+            if (props is not null && key != CustomerName && !props.ContainsKey(key)) continue;
             var node = value switch
             {
                 null => null,

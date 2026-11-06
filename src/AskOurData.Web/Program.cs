@@ -81,8 +81,9 @@ app.MapGet("/culture/{lang}", (string lang, string? returnUrl, HttpContext http)
 // ---- Dev sign-in: demo user picker (Development only). Production: Entra OIDC + on-behalf-of token.
 if (web.AuthMode == "Dev")
 {
-    app.MapPost("/auth/dev-login", async (HttpContext http, IGatewayTokenProvider tokens, GatewayClient gateway) =>
+    app.MapPost("/auth/dev-login", async (HttpContext http, IGatewayTokenProvider tokens, Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery) =>
     {
+        if (!await antiforgery.IsRequestValidAsync(http)) return Results.LocalRedirect("/login?error=1");
         var form = await http.Request.ReadFormAsync();
         var user = form["user"].ToString();
         if (!System.Text.RegularExpressions.Regex.IsMatch(user, "^[a-z]{2,20}$")) return Results.LocalRedirect("/login?error=1");
@@ -112,8 +113,9 @@ if (web.AuthMode == "Dev")
     });
 }
 
-app.MapPost("/auth/logout", async (HttpContext http) =>
+app.MapPost("/auth/logout", async (HttpContext http, Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery) =>
 {
+    if (!await antiforgery.IsRequestValidAsync(http)) return Results.LocalRedirect("/");
     await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.LocalRedirect("/login");
 });
