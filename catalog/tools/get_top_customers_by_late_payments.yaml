@@ -1,0 +1,40 @@
+name: get_top_customers_by_late_payments
+version: 1
+kind: query
+permission: ar.read
+description: >
+  Ranks customers by late payment behaviour for invoices DUE in the period.
+  Use for "who pays late", "worst payers", "top customers by late payments".
+  metric: amount = total amount of late invoices (default), count = number of late invoices,
+  avg_days_late = average days late.
+parameters:
+  - name: period
+    type: period
+    default: this_quarter
+    description: Period by invoice due date.
+  - name: metric
+    type: enum
+    values: [amount, count, avg_days_late]
+    default: amount
+    description: "Ranking metric: amount (default), count, or avg_days_late."
+  - name: limit
+    type: integer
+    min: 1
+    max: 100
+    default: "5"
+    description: Number of customers to return.
+  - name: region
+    type: region
+    description: Optional region filter. Omit for all regions you can access.
+definitions: [late_invoice, days_late, late_amount, period_by_due_date, excludes_void_credited, currency, totals_shown_rows]
+query: top_customers_by_late_payments.sql
+output:
+  columns:
+    - { name: rank,               type: int }
+    - { name: customer_id,        type: int }
+    - { name: customer_name,      type: string, untrusted: true }
+    - { name: region_code,        type: string }
+    - { name: late_invoice_count, type: int }
+    - { name: late_amount,        type: money, unit: USD }
+    - { name: avg_days_late,      type: decimal }
+  totals: [late_invoice_count, late_amount]

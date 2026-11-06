@@ -1,0 +1,35 @@
+name: get_revenue_by_customer
+version: 1
+kind: query
+permission: revenue.read
+description: >
+  Top customers by invoiced revenue (billing basis) for invoices issued in the period.
+parameters:
+  - name: period
+    type: period
+    default: this_quarter
+    description: Period by invoice issue date.
+  - name: limit
+    type: integer
+    min: 1
+    max: 100
+    default: "10"
+    description: Number of customers to return.
+  - name: segment
+    type: segment
+    description: Optional customer segment filter.
+  - name: region
+    type: region
+    description: Optional region filter. Omit for all regions you can access.
+definitions: [revenue_invoiced, excludes_void_credited, currency, totals_shown_rows]
+query: revenue_by_customer.sql
+output:
+  columns:
+    - { name: rank,          type: int }
+    - { name: customer_id,   type: int }
+    - { name: customer_name, type: string, untrusted: true }
+    - { name: region_code,   type: string }
+    - { name: segment_code,  type: string }
+    - { name: invoice_count, type: int }
+    - { name: revenue,       type: money, unit: USD }
+  totals: [invoice_count, revenue]

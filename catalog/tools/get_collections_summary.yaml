@@ -1,0 +1,29 @@
+name: get_collections_summary
+version: 1
+kind: query
+permission: ar.read
+description: >
+  Cash collected (payments received) in the period with average days to pay,
+  grouped by calendar month, region or segment.
+parameters:
+  - name: period
+    type: period
+    default: this_quarter
+    description: Period by payment date.
+  - name: group_by
+    type: enum
+    values: [month, region, segment]
+    default: month
+    description: How to group the rows.
+  - name: region
+    type: region
+    description: Optional region filter. Omit for all regions you can access.
+definitions: [cash_collected, days_to_pay, currency, totals_shown_rows]
+query: collections_summary.sql
+output:
+  columns:
+    - { name: group_label,     type: string }
+    - { name: payment_count,   type: int }
+    - { name: cash_collected,  type: money, unit: USD }
+    - { name: avg_days_to_pay, type: decimal }
+  totals: [payment_count, cash_collected]

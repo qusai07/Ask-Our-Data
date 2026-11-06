@@ -1,0 +1,18 @@
+# Business definitions. Every tool result carries the definitions it used, verbatim,
+# so the answer can state them. Change wording here only with finance sign-off.
+definitions:
+  currency: "All amounts are in USD."
+  late_invoice: "Late invoice = an invoice paid in full more than 0 days after its due date, or still unpaid after its due date as of the report date."
+  days_late: "Days late = (date paid in full, or the report date if still unpaid) minus the due date."
+  late_amount: "Late amount = total invoice amount of late invoices."
+  period_by_due_date: "Invoices are assigned to a period by their due date."
+  excludes_void_credited: "Void and credited invoices are excluded."
+  open_balance: "Open balance = invoice amount minus payments received on or before the report date."
+  overdue: "Overdue = open balance greater than 0 and due date before the report date."
+  aging_buckets: "Aging buckets by days past due on the open balance: Current (not yet due), 1-30, 31-60, 61-90, 90+ days."
+  revenue_invoiced: "Revenue = invoiced amount (billing basis, not cash) for invoices issued in the period."
+  cash_collected: "Cash collected = payments with a payment date in the period."
+  days_to_pay: "Average days to pay = average of (payment date minus invoice issue date) across payments."
+  contact_masking: "Contact details are masked. Bank details show only the bank name and last 4 IBAN characters, and only to roles allowed to see them."
+  customer_search: "Matches customers whose name contains the search text (not case-sensitive), within your data scope."
+  totals_shown_rows: "Totals are computed by the server over the rows shown."

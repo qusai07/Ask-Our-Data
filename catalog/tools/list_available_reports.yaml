@@ -1,0 +1,13 @@
+name: list_available_reports
+version: 1
+kind: catalog
+public: true
+description: >
+  Lists the reports you are allowed to run and what each one answers.
+  Use when the user asks what you can do, or to check whether any report fits a question.
+parameters: []
+definitions: []
+output:
+  columns:
+    - { name: name,        type: string }
+    - { name: description, type: string }

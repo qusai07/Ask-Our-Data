@@ -1,0 +1,34 @@
+name: get_customer_profile
+version: 1
+kind: query
+permission: customer.read
+scope_check: customer_id
+description: >
+  One customer's profile: region, segment, payment terms, credit limit, masked primary contact,
+  and (for permitted roles) open and overdue balance and masked bank details.
+  Needs customer_id: call find_customer first if you only have a name.
+parameters:
+  - name: customer_id
+    type: customer_id
+    required: true
+    description: The customer's id from find_customer.
+definitions: [open_balance, overdue, contact_masking, currency]
+query: customer_profile.sql
+output:
+  columns:
+    - { name: customer_id,           type: int }
+    - { name: customer_code,         type: string }
+    - { name: customer_name,         type: string, untrusted: true }
+    - { name: region_name,           type: string }
+    - { name: segment_code,          type: string }
+    - { name: status,                type: string }
+    - { name: payment_terms_days,    type: int }
+    - { name: credit_limit,          type: money, unit: USD }
+    - { name: customer_since,        type: date }
+    - { name: primary_contact_name,  type: string, masked_at_source: true, untrusted: true }
+    - { name: primary_contact_email, type: string, masked_at_source: true, untrusted: true }
+    - { name: primary_contact_phone, type: string, masked_at_source: true }
+    - { name: open_balance,          type: money, unit: USD, requires_permission: ar.read }
+    - { name: overdue_balance,       type: money, unit: USD, requires_permission: ar.read }
+    - { name: bank_name,             type: string, requires_permission: bank.read_masked }
+    - { name: iban_last4,            type: string, masked_at_source: true, requires_permission: bank.read_masked }

@@ -1,0 +1,30 @@
+name: find_customer
+version: 1
+kind: query
+permission: customer.read
+description: >
+  Finds customers by (part of) their name and returns their customer_id.
+  Use this first whenever the user names a customer, before calling a report that needs customer_id.
+parameters:
+  - name: name_query
+    type: string
+    required: true
+    min_length: 2
+    max_length: 100
+    sql_transform: like_contains
+    description: Part of the customer name, e.g. "Harbor".
+  - name: limit
+    type: integer
+    min: 1
+    max: 25
+    default: "10"
+    description: Maximum number of matches to return.
+definitions: [customer_search]
+query: find_customer.sql
+output:
+  columns:
+    - { name: customer_id,   type: int }
+    - { name: customer_code, type: string }
+    - { name: customer_name, type: string, untrusted: true }
+    - { name: region_code,   type: string }
+    - { name: segment_code,  type: string }

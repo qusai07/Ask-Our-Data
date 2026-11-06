@@ -1,0 +1,35 @@
+name: get_overdue_invoices
+version: 1
+kind: query
+permission: ar.read
+scope_check: customer_id
+description: >
+  Lists one customer's overdue invoices (unpaid balance past due date) as of today.
+  Needs customer_id: call find_customer first if you only have a name.
+parameters:
+  - name: customer_id
+    type: customer_id
+    required: true
+    description: The customer's id from find_customer.
+  - name: due_period
+    type: period
+    description: Optional filter on invoice due date. Omit to include all overdue invoices.
+  - name: limit
+    type: integer
+    min: 1
+    max: 100
+    default: "50"
+    description: Maximum number of invoices to return.
+definitions: [overdue, open_balance, excludes_void_credited, currency, totals_shown_rows]
+query: overdue_invoices.sql
+output:
+  columns:
+    - { name: invoice_number, type: string }
+    - { name: customer_name,  type: string, untrusted: true }
+    - { name: issue_date,     type: date }
+    - { name: due_date,       type: date }
+    - { name: amount,         type: money, unit: USD }
+    - { name: open_balance,   type: money, unit: USD }
+    - { name: days_overdue,   type: int }
+    - { name: notes,          type: string, untrusted: true }
+  totals: [amount, open_balance]
